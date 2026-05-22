@@ -1,0 +1,277 @@
+/* ------------------------------------------------------------------ *
+ * Gut-Metabolite Dashboard — visual theme
+ *
+ * Loaded automatically by Dash from dashboard/assets/. Defines a
+ * design-token palette, typography scale, card system, and a few
+ * targeted overrides for Dash's default form widgets.
+ * ------------------------------------------------------------------ */
+
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
+
+:root {
+    /* Surfaces & ink */
+    --surface:        #f4f6fb;
+    --surface-elev:   #eef1f7;
+    --card:           #ffffff;
+    --card-hover:     #fbfcfe;
+    --ink-primary:    #0f172a;   /* slate-900 */
+    --ink-secondary:  #475569;   /* slate-600 */
+    --ink-muted:      #94a3b8;   /* slate-400 */
+    --ink-faint:      #cbd5e1;   /* slate-300 */
+    --border:         #e2e8f0;   /* slate-200 */
+    --border-strong:  #cbd5e1;   /* slate-300 */
+
+    /* Accent — used sparingly */
+    --accent:         #0ea5e9;   /* sky-500 */
+    --accent-soft:    #e0f2fe;   /* sky-100 */
+    --accent-ink:     #0369a1;   /* sky-700 */
+    --warn:           #f59e0b;   /* amber-500 */
+    --danger:         #dc2626;   /* red-600 */
+    --ok:             #16a34a;   /* green-600 */
+
+    /* Spacing scale */
+    --sp-1:  4px;
+    --sp-2:  8px;
+    --sp-3:  12px;
+    --sp-4:  16px;
+    --sp-5:  20px;
+    --sp-6:  24px;
+    --sp-7:  32px;
+    --sp-8:  48px;
+
+    /* Radii & shadows */
+    --r-sm:  6px;
+    --r-md:  10px;
+    --r-lg:  14px;
+    --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04),
+                 0 1px 3px rgba(15, 23, 42, 0.06);
+    --shadow-md: 0 4px 10px rgba(15, 23, 42, 0.05),
+                 0 2px 4px rgba(15, 23, 42, 0.04);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--surface);
+    color: var(--ink-primary);
+    font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto,
+                 sans-serif;
+    font-feature-settings: "ss01", "cv11";
+    font-variant-numeric: tabular-nums;
+    -webkit-font-smoothing: antialiased;
+    line-height: 1.45;
+}
+
+/* ---- typography scale ---- */
+h1, h2, h3, h4 { color: var(--ink-primary); margin-top: 0;
+                 font-weight: 600; letter-spacing: -0.01em; }
+h1 { font-size: 28px; line-height: 1.2; }
+h2 { font-size: 22px; line-height: 1.25; }
+h3 { font-size: 16px; line-height: 1.3; text-transform: uppercase;
+     letter-spacing: 0.06em; color: var(--ink-secondary); }
+h4 { font-size: 14px; line-height: 1.35; color: var(--ink-secondary);
+     font-weight: 600; }
+
+/* ---- shell ---- */
+.app-shell {
+    display: grid;
+    grid-template-columns: 296px 1fr;
+    min-height: 100vh;
+    background: var(--surface);
+}
+
+/* ---- sidebar ---- */
+.sidebar {
+    background: var(--card);
+    border-right: 1px solid var(--border);
+    padding: var(--sp-6) var(--sp-5);
+    height: 100vh;
+    overflow-y: auto;
+    position: sticky; top: 0;
+}
+.sidebar h3 { margin: 0 0 var(--sp-3); font-size: 11px; }
+.sidebar-section {
+    margin-bottom: var(--sp-6);
+    padding-bottom: var(--sp-5);
+    border-bottom: 1px solid var(--border);
+}
+.sidebar-section:last-child { border-bottom: none; }
+.sidebar label {
+    display: block;
+    font-size: 12px; font-weight: 500;
+    color: var(--ink-secondary);
+    margin: var(--sp-3) 0 var(--sp-2);
+}
+
+/* ---- main column ---- */
+.main {
+    padding: var(--sp-6) var(--sp-7);
+    overflow-y: auto;
+    height: 100vh;
+}
+.header { margin-bottom: var(--sp-5); }
+.header .subtitle {
+    color: var(--ink-secondary);
+    font-size: 13px;
+    margin-top: var(--sp-2);
+    max-width: 720px;
+}
+
+/* ---- KPI strip ---- */
+.kpi-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: var(--sp-3);
+    margin-bottom: var(--sp-5);
+}
+.kpi-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    padding: var(--sp-4) var(--sp-4);
+    box-shadow: var(--shadow-sm);
+}
+.kpi-card .label {
+    font-size: 11px; text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--ink-muted); font-weight: 500;
+}
+.kpi-card .value {
+    font-size: 22px; font-weight: 600;
+    color: var(--ink-primary);
+    margin-top: var(--sp-1);
+}
+.kpi-card .delta {
+    font-size: 11px; color: var(--ink-secondary);
+    margin-top: 2px;
+}
+
+/* ---- cards ---- */
+.card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    box-shadow: var(--shadow-sm);
+    padding: var(--sp-5);
+    margin-bottom: var(--sp-5);
+}
+.card-title {
+    font-size: 12px; font-weight: 600;
+    color: var(--ink-secondary);
+    text-transform: uppercase; letter-spacing: 0.06em;
+    margin-bottom: var(--sp-3);
+}
+.card-row {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr;
+    gap: var(--sp-5);
+}
+@media (max-width: 1280px) {
+    .card-row { grid-template-columns: 1fr; }
+}
+
+/* ---- tabs ---- */
+.dash-tabs .tab--selected {
+    border-top-color: var(--accent) !important;
+    color: var(--ink-primary) !important;
+    font-weight: 600 !important;
+    background: var(--card) !important;
+}
+.dash-tabs .tab {
+    color: var(--ink-secondary) !important;
+    border: 1px solid var(--border) !important;
+    background: var(--surface-elev) !important;
+    font-size: 13px !important;
+    padding: 10px 16px !important;
+}
+.dash-tab-content { padding-top: var(--sp-5); }
+
+/* ---- form widgets ---- */
+.Select-control,
+.Select-menu-outer,
+.dash-dropdown .Select-control {
+    border-radius: var(--r-sm) !important;
+    border-color: var(--border) !important;
+    box-shadow: none !important;
+    min-height: 32px !important;
+    font-size: 13px !important;
+}
+.Select-arrow-zone { color: var(--ink-muted) !important; }
+input[type="radio"], input[type="checkbox"] {
+    accent-color: var(--accent);
+    margin: 0 6px 0 0;
+    vertical-align: middle;
+}
+/* Force checkbox/radio + label text to share a single line in the sidebar. */
+.sidebar-section label {
+    display: inline-flex !important;
+    align-items: center;
+    white-space: nowrap;
+    line-height: 1.3;
+}
+.sidebar-section .dash-checklist > label,
+.sidebar-section .dash-radio-items > label {
+    display: flex !important;
+    align-items: center;
+    margin-bottom: 4px;
+}
+.rc-slider-rail { background: var(--border) !important; }
+.rc-slider-track { background: var(--accent) !important; }
+.rc-slider-handle { border-color: var(--accent) !important;
+                    box-shadow: 0 0 0 4px var(--accent-soft) !important; }
+
+/* ---- stats table ---- */
+.stats-table { width: 100%; font-size: 12px; border-collapse: collapse;
+               font-variant-numeric: tabular-nums; }
+.stats-table thead th {
+    text-align: left;
+    color: var(--ink-secondary);
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-size: 10px;
+    padding: var(--sp-2) var(--sp-3);
+    border-bottom: 1px solid var(--border);
+    background: var(--surface-elev);
+}
+.stats-table tbody td {
+    padding: var(--sp-2) var(--sp-3);
+    border-bottom: 1px solid var(--border);
+    color: var(--ink-primary);
+}
+.stats-table tbody tr:hover { background: var(--card-hover); }
+
+/* ---- chips for status (used in KPI delta) ---- */
+.chip {
+    display: inline-block; font-size: 10px;
+    padding: 2px 6px; border-radius: 999px;
+    background: var(--accent-soft); color: var(--accent-ink);
+    margin-right: 4px;
+}
+
+/* ---- footer notes ---- */
+.note {
+    font-size: 11px;
+    color: var(--ink-muted);
+    margin-top: var(--sp-2);
+}
+
+/* ---- buttons ---- */
+.btn {
+    appearance: none; border: 1px solid var(--border);
+    background: var(--card); color: var(--ink-primary);
+    border-radius: var(--r-sm); padding: 6px 10px;
+    font-size: 12px; font-weight: 500; cursor: pointer;
+    transition: background 0.15s ease;
+}
+.btn:hover { background: var(--card-hover); }
+.btn-accent { background: var(--accent); color: white; border-color: var(--accent); }
+.btn-accent:hover { background: var(--accent-ink); }
+
+/* ---- scrollbar (webkit) ---- */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: var(--border-strong);
+                            border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--ink-muted); }

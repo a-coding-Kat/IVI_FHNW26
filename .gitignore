@@ -1,1 +1,5 @@
 interim/
+raw/
+.venv/
+__pycache__/
+*.pyc
