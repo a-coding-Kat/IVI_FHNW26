@@ -7,7 +7,7 @@ metabolites change in participants who progress from **MCI → AD** and from
 ## Why visit-ordinal anchoring
 
 Earlier versions anchored on *calendar months before conversion*. ADNI's
-metabolite cohort, however, has a roughly **yearly visit cadence** (median
+metabolite cohort has a roughly **yearly visit cadence** (median
 inter-visit gap 12 months, IQR 11.5–12.7). Calendar windows like −6 mo /
 −12 mo therefore mix "the visit before conversion" with "the visit two
 visits before" depending on each patient's schedule. Coverage at calendar
@@ -37,7 +37,7 @@ Coverage in the new framing (% of patients with a measurement at that slot):
 ```
 dashboard/
 ├── prep.py            # builds interim/mtb_sig_with_trajectory.pkl
-├── viz.py             # figure builders (no Dash imports)
+├── viz.py             # figure builders
 ├── app.py             # Dash layout + callbacks (no plotly imports)
 ├── requirements.txt
 └── README.md
@@ -51,7 +51,7 @@ in a notebook or REPL, and the dashboard module stays small.
 ```bash
 cd dashboard
 python -m venv .venv
-.\.venv\Scripts\Activate.ps1     # Windows PowerShell
+.\.venv\Scripts\Activate.bat     # Windows Command Prompt
 # source .venv/bin/activate      # macOS / Linux
 pip install -r requirements.txt
 python prep.py                   # regenerates the pickle once
@@ -82,8 +82,7 @@ acids, secondary bile acids, ratios, amino acids, fatty acids, organic
 acids). The instant answer to *"which metabolites differ at slot −1?"*
 — and which families those differences cluster in.
 
-Click a dot → that metabolite becomes the active one in Tab A and the
-patient drill-down.
+Click a dot: that metabolite becomes the active one in Tab A and the patient drill-down.
 
 ### C · PCA biological state space
 
