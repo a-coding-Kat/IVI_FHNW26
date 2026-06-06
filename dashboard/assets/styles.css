@@ -167,6 +167,9 @@ input[type="radio"], input[type="checkbox"] { accent-color: var(--accent); margi
     margin-bottom: 4px; white-space: nowrap;
 }
 
+/* sidebar checklist/radio option text size (was inline fontSize:13) */
+.sidebar .dash-checklist label, .sidebar .dash-radio-items label { font-size: 13px; }
+
 /* metabolite dropdown: one full-width option per row + scroll when long.
    Selectors cover the class variants across Dash/react-select versions. */
 .metabolite-dropdown .Select-menu-outer { max-height: 320px !important; overflow-y: auto !important; z-index: 1000 !important; }

@@ -83,33 +83,6 @@ def cohort_summary():
     }
 
 
-def kpi_strip():
-    s = cohort_summary()
-    cards = [
-        ("Participants", f"{s['n_participants']:,}",
-         f"{s['n_visits']:,} longitudinal visits"),
-        ("MCI -> AD", f"{s['n_mci_ad']:,}",
-         "converters with full timeline"),
-        ("NL -> MCI", f"{s['n_nl_mci']:,}",
-         "early-progression cohort"),
-        ("MCI -> NL", f"{s['n_mci_nl']:,}",
-         "reverters (improvement)"),
-    ]
-    # marginTop: gap between the tab bar above and this strip.
-    # marginBottom: 0 so the dash-tab-content's own padding-top is the only
-    #               gap between this strip and the active tab's content.
-    return html.Div(
-        className="kpi-row",
-        style={"marginTop": "var(--sp-5)", "marginBottom": "0"},
-        children=[
-            html.Div(className="kpi-card", children=[
-                html.Div(label, className="label"),
-                html.Div(value, className="value"),
-                html.Div(delta, className="delta"),
-            ]) for label, value, delta in cards
-        ])
-
-
 # --------------------------------------------------------------------------- #
 # Sidebar
 # --------------------------------------------------------------------------- #
@@ -131,16 +104,11 @@ SIDEBAR = html.Div(className="sidebar", children=[
             id="traj-groups",
             options=[{"label": t, "value": t} for t in TRAJECTORIES],
             value=["MCI->AD", "stable_NL", "stable_MCI"],
-            labelStyle={"display": "block", "fontSize": 13,
-                        "marginBottom": "4px"},
         ),
         html.Div(style={"display": "flex", "gap": "4px",
                         "marginTop": "4px", "marginBottom": "8px"},
                  children=[
             html.Button("Deselect all", id="traj-deselect-btn",
-                        className="btn", n_clicks=0,
-                        style={"fontSize": "11px", "padding": "3px 8px"}),
-            html.Button("Select all", id="traj-select-btn",
                         className="btn", n_clicks=0,
                         style={"fontSize": "11px", "padding": "3px 8px"}),
         ]),
@@ -149,7 +117,7 @@ SIDEBAR = html.Div(className="sidebar", children=[
             id="sex",
             options=[{"label": s, "value": s}
                      for s in ["All", "Male", "Female"]],
-            value="All", inline=True, style={"fontSize": 13},
+            value="All", inline=True,
         ),
     ),
 
@@ -166,7 +134,6 @@ SIDEBAR = html.Div(className="sidebar", children=[
             placeholder="Type to filter metabolites...",
             optionHeight=32,
             className="metabolite-dropdown",
-            style={"fontSize": 13},
         ),
         sec_id="sec-traj-plot",
     ),
@@ -178,14 +145,12 @@ SIDEBAR = html.Div(className="sidebar", children=[
             id="traj-focus",
             options=[{"label": t, "value": t} for t in CONVERTER_GROUPS],
             value="MCI->AD",
-            labelStyle={"display": "block", "fontSize": 13,
-                        "marginBottom": "4px"},
         ),
         html.Label("Baseline (reference)"),
         dcc.Dropdown(
             id="baseline-group",
             options=[{"label": t, "value": t} for t in BASELINE_GROUPS],
-            value="stable_NL", clearable=False, style={"fontSize": 13},
+            value="stable_NL", clearable=False,
         ),
         sec_id="sec-comparison",
     ),
@@ -196,7 +161,7 @@ SIDEBAR = html.Div(className="sidebar", children=[
         dcc.RadioItems(
             id="forest-slot",
             options=[{"label": f"{s:+d}", "value": s} for s in viz.SLOTS],
-            value=0, inline=True, style={"fontSize": 13},
+            value=0, inline=True,
         ),
         sec_id="sec-forest-slot",
     ),
@@ -213,14 +178,12 @@ SIDEBAR = html.Div(className="sidebar", children=[
                 {"label": "sex",        "value": "sex"},
             ],
             value="trajectory",
-            labelStyle={"display": "block", "fontSize": 13,
-                        "marginBottom": "4px"},
         ),
         dcc.Checklist(
             id="pca-arrows",
             options=[{"label": "Show patient first->last arrows",
                       "value": "yes"}],
-            value=[], style={"fontSize": 13, "marginTop": "8px"},
+            value=[], style={"marginTop": "8px"},
         ),
         sec_id="sec-pca",
     ),
@@ -228,14 +191,12 @@ SIDEBAR = html.Div(className="sidebar", children=[
     section(
         "Individual patient view",
         html.Label("RID"),
-        dcc.Dropdown(id="rid", options=[], value=None,
-                     style={"fontSize": 13},
-                     placeholder="click a point/line/dot in any view"),
+        dcc.Dropdown(id="rid", options=[], value=None, searchable=True,
+                     placeholder="type a RID, or click a point in any view"),
         sec_id="sec-patient",
     ),
 
-    html.Div(id="meta-summary", className="note",
-             style={"marginTop": "12px"}),
+    html.Div(id="meta-summary", className="note"),
 ])
 
 
@@ -261,9 +222,21 @@ def graph_card(title, graph_id, height=None):
 # App factory
 # --------------------------------------------------------------------------- #
 def _make_app() -> Dash:
+    # Dash 3.x ships React 18 by default. This app works on React 18,
+    # but if graph click events (PCA dot -> patient drill-down) ever
+    # misbehave under React 18, uncomment the next two lines to pin the
+    # Dash 2.x React (must run BEFORE Dash() is constructed):
+    # import dash
+    # dash._dash_renderer._set_react_version("16.14.0")
     app = Dash(__name__,
                title="Metabolite Trajectories - Visit-Ordinal",
-               update_title=None)
+               update_title=None,
+               # REQUIRED: tab content (pca-fig, drilldown-fig, trajectory-fig,
+               # forest-fig) is rendered lazily by render_tab(), so these IDs
+               # are absent from the initial layout. Without this flag Dash
+               # refuses to wire callbacks that reference them and the
+               # click-to-drill (PCA dot -> patient view) silently never fires.
+               suppress_callback_exceptions=True)
 
     app.layout = html.Div(className="app-shell", children=[
         SIDEBAR,
@@ -512,14 +485,16 @@ def _make_app() -> Dash:
         Output("info-age-fig", "figure"),
         Output("info-conv-age-fig", "figure"),
         Input("tabs", "value"),
+        Input("traj-groups", "value"),
+        Input("sex", "value"),
     )
-    def update_cohort_info(tab):
+    def update_cohort_info(tab, groups, sex):
         if tab != "info":
             return no_update, no_update, no_update, no_update
         return (viz.visit_gap_figure(),
                 viz.sex_over_years_figure(),
                 viz.age_over_years_figure(),
-                viz.age_at_conversion_figure())
+                viz.age_at_conversion_figure(groups, sex))
 
     # ----- RID dropdown rebuild -----
     @app.callback(
@@ -530,12 +505,15 @@ def _make_app() -> Dash:
         State("rid", "value"),
     )
     def update_rid_options(groups, sex, current):
-        rids = viz.all_rids(groups, sex)
-        sub = viz.filter_df(groups, sex)
-        options = [{"label": f"{r}  ({sub[sub.RID==r]['trajectory'].iloc[0]})",
-                    "value": int(r)} for r in rids]
-        return options, (current if current in rids
-                         else (int(rids[0]) if rids else None))
+        # List ALL patients here, independent of the cohort checklist used by
+        # the other tabs, so any RID can be typed into the box or arrive from a
+        # click on the PCA / trajectory views. Keep the current selection.
+        df = viz.DF
+        traj_by_rid = df.drop_duplicates("RID").set_index("RID")["trajectory"]
+        rids = sorted(int(r) for r in df["RID"].unique())
+        options = [{"label": f"{r}  ({traj_by_rid[r]})", "value": r}
+                   for r in rids]
+        return options, current
 
     # ----- Click-to-drill: trajectory / PCA -> Tab E -----
     # Read ONLY the figure the user just clicked via ctx.triggered_id.
@@ -601,15 +579,6 @@ def _make_app() -> Dash:
         Input("traj-deselect-btn", "n_clicks"),
         prevent_initial_call=True,
     )
-    _ALL_TRAJ_JS = repr(TRAJECTORIES)
-    app.clientside_callback(
-        f"function(n){{ return n ? {_ALL_TRAJ_JS} "
-        ": window.dash_clientside.no_update; }}",
-        Output("traj-groups", "value", allow_duplicate=True),
-        Input("traj-select-btn", "n_clicks"),
-        prevent_initial_call=True,
-    )
-
     return app
 
 

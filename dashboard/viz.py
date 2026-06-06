@@ -716,7 +716,7 @@ def visit_gap_figure():
     fig.add_hline(y=12, line=dict(color=INK_MUTED, dash="dot", width=1),
                   annotation_text="12 months", annotation_position="right")
     fig.update_layout(
-        title=("<b>Inter-visit gap by transition</b>  -  "
+        title=("<b>Cohort inter-visit gap by transition</b>  -  "
                "screening (sc -> bl, bl -> m06, m06 -> m12) excluded"),
         xaxis_title="Visit transition",
         yaxis_title="Months elapsed (mean +/- std)",
@@ -726,7 +726,7 @@ def visit_gap_figure():
     return fig
 
 
-def age_at_conversion_figure():
+def age_at_conversion_figure(traj_groups=None, sex="All"):
     """Boxplot of age at conversion for each diagnosis transition.
 
     For each patient we walk their visits in chronological order and
@@ -741,8 +741,14 @@ def age_at_conversion_figure():
     nothing.
     """
     rows = []
-    d = DF.dropna(subset=["dx", "age_at_visit"]) \
-          .sort_values(["RID", "visit_idx"])
+    # Respect the sidebar cohort + sex filters before computing ages.
+    base = DF
+    if traj_groups:
+        base = base[base["trajectory"].isin(traj_groups)]
+    if sex and sex != "All":
+        base = base.loc[base["sex"].to_numpy() == sex]
+    d = base.dropna(subset=["dx", "age_at_visit"]) \
+            .sort_values(["RID", "visit_idx"])
     for rid, g in d.groupby("RID"):
         dxs  = g["dx"].tolist()
         ages = g["age_at_visit"].tolist()
@@ -786,7 +792,7 @@ def age_at_conversion_figure():
 
     fig.update_layout(
         title=("<b>Age at first diagnosis transition</b>  -  "
-               "one observation per patient per transition"),
+               "for selected group(s) and sex"),
         xaxis_title="Diagnosis transition",
         yaxis_title="Age at the new-diagnosis visit (years)",
         template="clinical",
@@ -879,7 +885,7 @@ def age_over_years_figure():
                             "n visits = %{customdata[0]}<extra></extra>"),
         ))
     fig.update_layout(
-        title="<b>Mean age per diagnosis over calendar years</b>",
+        title="<b>Cohort mean age per diagnosis over calendar years</b>",
         xaxis_title="Calendar year",
         yaxis_title="Mean age (years)",
         template="clinical",

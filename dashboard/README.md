@@ -49,15 +49,17 @@ in a notebook or REPL, and the dashboard module stays small.
 ## Run
 
 ```bash
+# create + activate the conda environment (from the repo root)
+conda env create -f ../environment.yml
+conda activate ivi
+
 cd dashboard
-python -m venv venv
-venv\Scripts\activate.bat        # Windows Command Prompt (cmd)
-# venv\Scripts\Activate.ps1      # Windows PowerShell
-# source venv/bin/activate        # Linux / macOS
-pip install -r requirements.txt
-python prep.py                   # regenerates the pickle once
-python app.py                    # opens on http://127.0.0.1:8050
+python prep.py    # regenerates interim/mtb_sig_with_trajectory.pkl (skip if it exists)
+python app.py     # opens on http://127.0.0.1:8050
 ```
+
+Pip/venv alternative: `python -m venv venv`, activate it, then
+`pip install -r requirements.txt`.
 
 ## Four tabs
 

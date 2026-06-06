@@ -1,0 +1,18 @@
+# Conda environment for the Gut-Microbiome Metabolite Dashboard (IVI project)
+#
+#   conda env create -f environment.yml      # create
+#   conda activate ivi                        # activate
+#   conda env update -f environment.yml --prune   # update after edits
+#
+name: ivi
+channels:
+  - conda-forge
+dependencies:
+  - python>=3.10
+  - dash>=3.0,<4
+  - plotly>=5.20
+  - pandas>=2.0
+  - numpy>=1.26
+  - scipy>=1.11
+  - scikit-learn>=1.4
+  - ipykernel>=5.0.0
