@@ -50,9 +50,10 @@ in a notebook or REPL, and the dashboard module stays small.
 
 ```bash
 cd dashboard
-python -m venv .venv
-.\.venv\Scripts\Activate.bat     # Windows Command Prompt
-# source .venv/bin/activate      # macOS / Linux
+python -m venv venv
+venv\Scripts\activate.bat        # Windows Command Prompt (cmd)
+# venv\Scripts\Activate.ps1      # Windows PowerShell
+# source venv/bin/activate        # Linux / macOS
 pip install -r requirements.txt
 python prep.py                   # regenerates the pickle once
 python app.py                    # opens on http://127.0.0.1:8050

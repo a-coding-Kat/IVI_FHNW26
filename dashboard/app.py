@@ -1,49 +1,42 @@
-"""Gut-Microbiome Metabolite Dashboard - Visit-Ordinal Edition.
-
-This is the main dashboard tested in the usability study. It is identical
-to app_clean.py with the WebGazer / usability eye-tracking elements added:
-
-  * `csv`, `os`, `time` imports and the GAZE_LOG_PATH constant for the
-    on-disk session log.
-  * An "Usability eye-tracking" control card in the top-right of the
-    header with Start / Calibrate / Stop / Download CSV buttons and a
-    status note.
-  * `dcc.Store(id="gaze-batch-store")` + `dcc.Download(id="gaze-download")`
-    plumbing at the bottom of the layout.
-  * Three clientside callbacks that route Start / Calibrate / Stop button
-    clicks to `window.gazeTracker` (defined in assets/tracking.js).
-  * Server callbacks `save_gaze_batch` (appends each batched gaze payload
-    to usability_gaze_log.csv) and `download_gaze_csv` (lets the
-    researcher export the running log via a Dash Download component).
-
-Tab order, terminology, KPI strip placement and the Cohort-information
-layout are inherited verbatim from app_clean.py so the dashboard the
-participants test is the dashboard the project shipped.
+"""Gut-Microbiome Metabolite Dashboard - Visit-Ordinal Edition
 """
 from __future__ import annotations
 
 # Standard library
-import csv                # writer used by the eye-tracking save callback
-import io                 # in-memory CSV buffer for the stats download
+import io                 # in-memory CSV buffer for the download button
 import logging
-import os                 # file-existence check for the gaze-log CSV
-import time               # session timestamps for gaze-log filenames
 
 # Quiet down the per-request Werkzeug access log (200 / 304 spam).
 logging.getLogger("werkzeug").setLevel(logging.WARNING)
 
 # Dash primitives
-from dash import Dash, Input, Output, State, dcc, html, no_update
+from dash import Dash, Input, Output, State, dcc, html, no_update, ctx
 
-# Figure builders + in-memory dataframe.
+# Figure builders + the in-memory dataframe.
 import viz
 
 
 # --------------------------------------------------------------------------- #
-# Eye-tracking output path.
-# Written to the working directory the dashboard was launched from.
+# Colour overrides for THIS app only.
+#
+# Replace the dashboard-wide NL/AD colours with a colourblind-friendlier,
+# higher-contrast pair:
+#     NL  green  ->  vibrant blue   (#0072B2)
+#     AD  red    ->  bright orange  (#E69F00)
+#     MCI grey   ->  unchanged       (#94a3b8)
+#
+# Figure builders look up viz.DX_COLORS / viz.TRAJ_COLORS on every call,
+# so monkey-patching the dicts here propagates to every chart in this
+# process. The base palette in viz.py is untouched, so app.py and
+# app_clean_umap.py keep the original green / grey / red.
 # --------------------------------------------------------------------------- #
-GAZE_LOG_PATH = "usability_gaze_log.csv"
+viz.DX_COLORS["NL"] = "#0072B2"     # vibrant blue
+viz.DX_COLORS["AD"] = "#E69F00"     # bright orange
+
+# Keep the trajectory palette consistent with the new endpoint colours.
+viz.TRAJ_COLORS["stable_NL"] = "#0072B2"   # matches new NL
+viz.TRAJ_COLORS["stable_AD"] = "#E69F00"   # matches new AD
+viz.TRAJ_COLORS["MCI->AD"]   = "#E69F00"   # decline ending at AD
 
 
 # --------------------------------------------------------------------------- #
@@ -70,12 +63,23 @@ ALL_SECTIONS = ["sec-traj-plot", "sec-comparison",
 # --------------------------------------------------------------------------- #
 def cohort_summary():
     df = viz.DF
+
+    # NL -> AD "direct" converters: patients whose dx history is exactly
+    # {NL, AD}, never visiting MCI. The trajectory classifier folds these
+    # into `other_unstable`, so count them on the fly from each patient's
+    # observed dx values.
+    dx_sets = df.groupby("RID")["dx"].apply(
+        lambda s: set(s.dropna().tolist())
+    )
+    n_nl_ad = int((dx_sets == {"NL", "AD"}).sum())
+
     return {
         "n_participants": df["RID"].nunique(),
         "n_visits":       len(df),
         "n_mci_ad":       df[df["trajectory"] == "MCI->AD"]["RID"].nunique(),
         "n_nl_mci":       df[df["trajectory"] == "NL->MCI"]["RID"].nunique(),
         "n_mci_nl":       df[df["trajectory"] == "MCI->NL"]["RID"].nunique(),
+        "n_nl_ad":        n_nl_ad,
     }
 
 
@@ -107,41 +111,6 @@ def kpi_strip():
 
 
 # --------------------------------------------------------------------------- #
-# Eye-tracking control card (header right column)
-# --------------------------------------------------------------------------- #
-def eye_tracking_card():
-    """Small card with Start / Calibrate / Stop / Download CSV buttons.
-
-    Hidden state Components (gaze-batch-store, gaze-download) live at the
-    bottom of the layout; this card only exposes the user-facing controls.
-    """
-    return html.Div(
-        className="card",
-        style={"padding": "10px 12px", "minWidth": "260px"},
-        children=[
-            html.Div("Usability eye-tracking",
-                     className="card-title",
-                     style={"marginBottom": "6px"}),
-            html.Div(style={"display": "flex", "gap": "6px",
-                            "flexWrap": "wrap"}, children=[
-                html.Button("Start", id="gaze-start-btn",
-                            className="btn btn-accent", n_clicks=0),
-                html.Button("Calibrate", id="gaze-calibrate-btn",
-                            className="btn", n_clicks=0),
-                html.Button("Stop", id="gaze-stop-btn",
-                            className="btn", n_clicks=0),
-                html.Button("Download CSV", id="gaze-download-btn",
-                            className="btn", n_clicks=0),
-            ]),
-            html.Div(id="gaze-status",
-                     className="note",
-                     style={"marginTop": "8px"},
-                     children="Tracker idle. Click Start, then "
-                              "Calibrate before each session."),
-        ])
-
-
-# --------------------------------------------------------------------------- #
 # Sidebar
 # --------------------------------------------------------------------------- #
 def section(title, *children, sec_id=None):
@@ -165,6 +134,16 @@ SIDEBAR = html.Div(className="sidebar", children=[
             labelStyle={"display": "block", "fontSize": 13,
                         "marginBottom": "4px"},
         ),
+        html.Div(style={"display": "flex", "gap": "4px",
+                        "marginTop": "4px", "marginBottom": "8px"},
+                 children=[
+            html.Button("Deselect all", id="traj-deselect-btn",
+                        className="btn", n_clicks=0,
+                        style={"fontSize": "11px", "padding": "3px 8px"}),
+            html.Button("Select all", id="traj-select-btn",
+                        className="btn", n_clicks=0,
+                        style={"fontSize": "11px", "padding": "3px 8px"}),
+        ]),
         html.Label("Sex"),
         dcc.RadioItems(
             id="sex",
@@ -181,7 +160,13 @@ SIDEBAR = html.Div(className="sidebar", children=[
             id="metabolite",
             options=[{"label": m, "value": m}
                      for m in viz.ORDERED_METABOLITES],
-            value="GLCA", clearable=False, style={"fontSize": 13},
+            value="GLCA",
+            clearable=False,
+            searchable=True,                       # type to filter
+            placeholder="Type to filter metabolites...",
+            optionHeight=32,
+            className="metabolite-dropdown",
+            style={"fontSize": 13},
         ),
         sec_id="sec-traj-plot",
     ),
@@ -283,34 +268,23 @@ def _make_app() -> Dash:
     app.layout = html.Div(className="app-shell", children=[
         SIDEBAR,
         html.Div(className="main", children=[
-            # Header: title + subtitle on the left, eye-tracking card on
-            # the right.  Flex layout keeps them on one line on desktop.
-            html.Div(className="header",
-                     style={"display": "flex",
-                            "justifyContent": "space-between",
-                            "alignItems": "flex-start", "gap": "24px"},
-                     children=[
-                html.Div(style={"flex": "1"}, children=[
-                    html.H1("Gut-Microbiome Metabolite Trajectories"),
-                    html.Div(className="subtitle", children=[
-                        "Visit-ordinal anchoring. ",
-                        html.B("Timepoint 0"),
-                        " represents the visit where a diagnosis change "
-                        "occurred, serving as the alignment anchor for "
-                        "all patients' clinical histories. Prior to "
-                        "this point, patients held a different "
-                        "diagnosis than they did afterward.",
-                        html.Br(),
-                        "The x-axis is ",
-                        html.B("visit count from diagnosis change"),
-                        ", not calendar months - ADNI's roughly-yearly "
-                        "visit cadence makes calendar windows mostly "
-                        "empty.",
-                    ]),
+            html.Div(className="header", children=[
+                html.H1("Gut-Microbiome Metabolite Trajectories"),
+                html.Div(className="subtitle", children=[
+                    "Visit-ordinal anchoring. ",
+                    html.B("Timepoint 0"),
+                    " represents the visit where a diagnosis change "
+                    "occurred, serving as the alignment anchor for all "
+                    "patients' clinical histories. Prior to this point, "
+                    "patients held a different diagnosis than they did "
+                    "afterward.",
+                    html.Br(),
+                    "The x-axis is ",
+                    html.B("visit count from diagnosis change"),
+                    ", not calendar months - ADNI's roughly-yearly visit "
+                    "cadence makes calendar windows mostly empty.",
                 ]),
-                eye_tracking_card(),
             ]),
-            # tab bar -> KPI strip -> active tab content
             dcc.Tabs(id="tabs", value="info", className="dash-tabs",
                      children=[
                 dcc.Tab(label="A - Cohort information", value="info"),
@@ -320,21 +294,9 @@ def _make_app() -> Dash:
                 dcc.Tab(label="E - Individual patient view",
                         value="patient"),
             ]),
-            kpi_strip(),
             html.Div(id="tab-content", className="dash-tab-content"),
         ]),
-
-        # Hidden plumbing.
         dcc.Download(id="stats-download"),
-
-        # --- Eye-tracking plumbing ---
-        # gaze-batch-store receives the periodic batched payload from
-        # tracking.js (via window.dash_clientside.set_props). The Python
-        # callback save_gaze_batch then appends each batch to
-        # GAZE_LOG_PATH. gaze-download holds the dcc.Download trigger
-        # for the running CSV.
-        dcc.Store(id="gaze-batch-store"),
-        dcc.Download(id="gaze-download"),
     ])
 
     # ----- Tab-aware sidebar visibility -----
@@ -376,7 +338,7 @@ def _make_app() -> Dash:
                 graph_card("Effect size (Hedges' g) - converter - baseline",
                            "forest-fig"),
                 html.Div(
-                    "Tip: click a metabolite dot to load it in Tab B and "
+                    "Tip: click a metabolite dot to load it in Tab A and "
                     "the patient drill-down.",
                     className="note card",
                     style={"padding": "12px 16px"},
@@ -395,12 +357,14 @@ def _make_app() -> Dash:
             return [graph_card(None, "drilldown-fig")]
         if tab == "info":
             k = viz.cohort_kpi_summary()
-            kpi_cards = html.Div(
-                className="kpi-row",
-                # 3 cards instead of 4 since Participants moved to the top
-                # strip; override the default 4-column grid.
-                style={"gridTemplateColumns": "repeat(3, 1fr)"},
-                children=[
+            s = cohort_summary()
+            top_row = html.Div(className="kpi-row", children=[
+                html.Div(className="kpi-card", children=[
+                    html.Div("Participants", className="label"),
+                    html.Div(f"{s['n_participants']:,}", className="value"),
+                    html.Div(f"{s['n_visits']:,} longitudinal visits",
+                             className="delta"),
+                ]),
                 html.Div(className="kpi-card", children=[
                     html.Div("Sex split", className="label"),
                     html.Div(f"{k['n_male']:,} M / {k['n_female']:,} F",
@@ -424,19 +388,52 @@ def _make_app() -> Dash:
                              className="delta"),
                 ]),
             ])
+            bottom_row = html.Div(className="kpi-row", children=[
+                html.Div(className="kpi-card", children=[
+                    html.Div("NL -> MCI", className="label"),
+                    html.Div(f"{s['n_nl_mci']:,}", className="value"),
+                    html.Div("early-progression cohort",
+                             className="delta"),
+                ]),
+                html.Div(className="kpi-card", children=[
+                    html.Div("MCI -> NL", className="label"),
+                    html.Div(f"{s['n_mci_nl']:,}", className="value"),
+                    html.Div("reverters (improvement)", className="delta"),
+                ]),
+                html.Div(className="kpi-card", children=[
+                    html.Div("NL -> AD", className="label"),
+                    html.Div(f"{s['n_nl_ad']:,}", className="value"),
+                    html.Div("direct converters (never MCI)",
+                             className="delta"),
+                ]),
+                html.Div(className="kpi-card", children=[
+                    html.Div("MCI -> AD", className="label"),
+                    html.Div(f"{s['n_mci_ad']:,}", className="value"),
+                    html.Div("late-progression cohort",
+                             className="delta"),
+                ]),
+            ])
             return [
-                kpi_cards,
+                top_row,
+                bottom_row,
                 html.Div(className="card-row", children=[
                     graph_card("Sex composition over calendar years",
                                "info-sex-fig", height=420),
                     graph_card("Mean age per diagnosis over years",
                                "info-age-fig", height=420),
                 ]),
-                graph_card("Inter-visit gap by transition", "info-gap-fig"),
+                # Age-at-conversion boxplot to the LEFT of the
+                # inter-visit-gap chart (per request).
+                html.Div(className="card-row", children=[
+                    graph_card("Age at first diagnosis transition",
+                               "info-conv-age-fig", height=420),
+                    graph_card("Inter-visit gap by transition",
+                               "info-gap-fig", height=420),
+                ]),
             ]
         return html.Div()
 
-    # ----- Tab B: trajectory + stats -----
+    # ----- Tab A: trajectory + stats -----
     @app.callback(
         Output("trajectory-fig", "figure"),
         Output("stats-table", "children"),
@@ -459,7 +456,7 @@ def _make_app() -> Dash:
         )
         return fig, table
 
-    # ----- Tab B: stats CSV download -----
+    # ----- Tab A: stats CSV download -----
     @app.callback(
         Output("stats-download", "data"),
         Input("stats-download-btn", "n_clicks"),
@@ -478,7 +475,7 @@ def _make_app() -> Dash:
         return dict(content=buf.getvalue(),
                     filename=f"stats_{metab}_{focus}_vs_{baseline}_{sex}.csv")
 
-    # ----- Tab C: forest -----
+    # ----- Tab B: forest -----
     @app.callback(
         Output("forest-fig", "figure"),
         Input("traj-focus", "value"),
@@ -489,7 +486,7 @@ def _make_app() -> Dash:
     def update_forest(traj_focus, baseline_group, sex, slot):
         return viz.forest_figure(traj_focus, baseline_group, sex, slot)
 
-    # ----- Tab D: PCA scatter + loadings -----
+    # ----- Tab C: PCA scatter + loadings -----
     @app.callback(
         Output("pca-fig", "figure"),
         Output("pca-loadings-fig", "figure"),
@@ -503,7 +500,7 @@ def _make_app() -> Dash:
                                show_arrows=("yes" in arrows)),
                 viz.pca_loadings_figure())
 
-    # ----- Tab E: drilldown -----
+    # ----- Tab D: drilldown -----
     @app.callback(Output("drilldown-fig", "figure"), Input("rid", "value"))
     def update_drilldown(rid):
         return viz.drilldown_figure(rid)
@@ -513,14 +510,16 @@ def _make_app() -> Dash:
         Output("info-gap-fig", "figure"),
         Output("info-sex-fig", "figure"),
         Output("info-age-fig", "figure"),
+        Output("info-conv-age-fig", "figure"),
         Input("tabs", "value"),
     )
     def update_cohort_info(tab):
         if tab != "info":
-            return no_update, no_update, no_update
+            return no_update, no_update, no_update, no_update
         return (viz.visit_gap_figure(),
                 viz.sex_over_years_figure(),
-                viz.age_over_years_figure())
+                viz.age_over_years_figure(),
+                viz.age_at_conversion_figure())
 
     # ----- RID dropdown rebuild -----
     @app.callback(
@@ -539,6 +538,11 @@ def _make_app() -> Dash:
                          else (int(rids[0]) if rids else None))
 
     # ----- Click-to-drill: trajectory / PCA -> Tab E -----
+    # Read ONLY the figure the user just clicked via ctx.triggered_id.
+    # Dash keeps each graph's clickData populated permanently, so a naive
+    # `for click in (traj_click, pca_click)` returns the FIRST non-empty
+    # clickData — which means a stale trajectory click (from Tab B) keeps
+    # winning and a later PCA click never selects its own point.
     @app.callback(
         Output("rid", "value", allow_duplicate=True),
         Output("tabs", "value"),
@@ -547,15 +551,23 @@ def _make_app() -> Dash:
         prevent_initial_call=True,
     )
     def click_to_drill(traj_click, pca_click):
-        for click in (traj_click, pca_click):
-            if click and click.get("points"):
-                pt = click["points"][0]
-                if "customdata" in pt and pt["customdata"]:
-                    try:
-                        return int(pt["customdata"][0]), "patient"
-                    except (ValueError, TypeError):
-                        continue
-        return no_update, no_update
+        trig = ctx.triggered_id
+        if trig == "trajectory-fig":
+            click = traj_click
+        elif trig == "pca-fig":
+            click = pca_click
+        else:
+            return no_update, no_update
+        if not click or not click.get("points"):
+            return no_update, no_update
+        cd = click["points"][0].get("customdata")
+        if not cd:
+            return no_update, no_update
+        try:
+            rid = int(cd[0])
+        except (ValueError, TypeError):
+            return no_update, no_update
+        return rid, "patient"
 
     # ----- Forest dot click -> active metabolite -----
     @app.callback(
@@ -570,97 +582,6 @@ def _make_app() -> Dash:
                 return y
         return no_update
 
-    # ===================================================================== #
-    # EYE-TRACKING CALLBACKS (usability study)
-    #
-    # Three clientside callbacks route Start / Calibrate / Stop button
-    # clicks to window.gazeTracker (defined in assets/tracking.js).
-    # The server callback save_gaze_batch appends each periodic batch
-    # of gaze samples to the CSV log on disk. download_gaze_csv lets
-    # the researcher export the running log via a Dash Download.
-    # ===================================================================== #
-
-    # --- clientside: Start tracking
-    app.clientside_callback(
-        """async function(n) {
-            if (!n) { return window.dash_clientside.no_update; }
-            const r = await window.gazeTracker.start();
-            return r === "active"
-                ? "Tracker active. Run calibration before recording."
-                : "Tracker failed to start - see browser console.";
-        }""",
-        Output("gaze-status", "children", allow_duplicate=True),
-        Input("gaze-start-btn", "n_clicks"),
-        prevent_initial_call=True,
-    )
-
-    # --- clientside: Calibrate (launches 9-point grid overlay)
-    app.clientside_callback(
-        """function(n) {
-            if (!n) { return window.dash_clientside.no_update; }
-            window.gazeTracker.calibrate();
-            return "Calibrating - click each yellow dot 5x.";
-        }""",
-        Output("gaze-status", "children", allow_duplicate=True),
-        Input("gaze-calibrate-btn", "n_clicks"),
-        prevent_initial_call=True,
-    )
-
-    # --- clientside: Stop tracking, flush remaining buffer
-    app.clientside_callback(
-        """function(n) {
-            if (!n) { return window.dash_clientside.no_update; }
-            window.gazeTracker.stop();
-            return "Tracker stopped. Click Download CSV to save the log.";
-        }""",
-        Output("gaze-status", "children", allow_duplicate=True),
-        Input("gaze-stop-btn", "n_clicks"),
-        prevent_initial_call=True,
-    )
-
-    # --- server: persist each batched gaze payload to CSV
-    @app.callback(
-        Output("gaze-status", "children", allow_duplicate=True),
-        Input("gaze-batch-store", "data"),
-        prevent_initial_call=True,
-    )
-    def save_gaze_batch(payload):
-        # payload is None on first render; tracking.js sends
-        # {samples: [...], flushed_at: ms, session_started_at: ms}.
-        if not payload or not payload.get("samples"):
-            return no_update
-        samples = payload["samples"]
-        new_file = not os.path.isfile(GAZE_LOG_PATH)
-        with open(GAZE_LOG_PATH, "a", newline="") as f:
-            w = csv.writer(f)
-            if new_file:
-                w.writerow(["timestamp_ms", "x_px", "y_px", "active_tab",
-                            "flushed_at_ms", "session_started_at_ms"])
-            flushed = payload.get("flushed_at", "")
-            started = payload.get("session_started_at", "")
-            for s in samples:
-                w.writerow([s.get("t", ""),
-                            s.get("x", ""),
-                            s.get("y", ""),
-                            s.get("tab", ""),
-                            flushed, started])
-        return (f"Wrote {len(samples)} samples at "
-                f"{time.strftime('%H:%M:%S')}.")
-
-    # --- server: download the running CSV via dcc.Download
-    @app.callback(
-        Output("gaze-download", "data"),
-        Input("gaze-download-btn", "n_clicks"),
-        prevent_initial_call=True,
-    )
-    def download_gaze_csv(n):
-        if not n or not os.path.isfile(GAZE_LOG_PATH):
-            return no_update
-        with open(GAZE_LOG_PATH, "r") as f:
-            content = f.read()
-        return dict(content=content,
-                    filename=f"usability_gaze_log_{int(time.time())}.csv")
-
     # ----- Sidebar footer counter -----
     @app.callback(
         Output("meta-summary", "children"),
@@ -672,21 +593,31 @@ def _make_app() -> Dash:
         return (f"Selected: {f['RID'].nunique()} participants - "
                 f"{len(f)} visits")
 
+    # ----- Quick clear / fill for the trajectory-group checklist -----
+    app.clientside_callback(
+        "function(n){ return n ? [] "
+        ": window.dash_clientside.no_update; }",
+        Output("traj-groups", "value", allow_duplicate=True),
+        Input("traj-deselect-btn", "n_clicks"),
+        prevent_initial_call=True,
+    )
+    _ALL_TRAJ_JS = repr(TRAJECTORIES)
+    app.clientside_callback(
+        f"function(n){{ return n ? {_ALL_TRAJ_JS} "
+        ": window.dash_clientside.no_update; }}",
+        Output("traj-groups", "value", allow_duplicate=True),
+        Input("traj-select-btn", "n_clicks"),
+        prevent_initial_call=True,
+    )
+
     return app
 
-
-# --------------------------------------------------------------------------- #
-# Module-level Dash instance and WSGI handle.
-# `server` is exported so production deployments can: gunicorn app:server
-# --------------------------------------------------------------------------- #
 
 app = _make_app()
 server = app.server
 
 
 if __name__ == "__main__":
-    counts = dict(viz.DF["sex"].value_counts(dropna=False))
-    print(f"[app] loaded {len(viz.DF):,} rows  "
-          f"sex dtype={viz.DF['sex'].dtype}  values={counts}",
-          flush=True)
+    print(f"[app_clean] loaded {len(viz.DF):,} rows", flush=True)
+    print("[app_clean] open  http://127.0.0.1:8050", flush=True)
     app.run(debug=False, host="127.0.0.1", port=8050)

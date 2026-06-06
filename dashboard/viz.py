@@ -187,42 +187,82 @@ def trajectory_figure(metabolite, traj_groups, sex, show_lines):
                 name=f"RID {rid}",
             ))
 
+    # ----- Systematic dodging -----
+    # When multiple cohorts are overlaid, plot each at a small horizontal
+    # offset from the integer slot centre so the means + error bars don't
+    # stack on top of each other. Total fan width = 0.30 units, well under
+    # the 1-unit gap between adjacent slots so they never bleed together.
+    # 1 group -> no offset; 2-4 groups -> symmetric offsets around 0.
+    def _will_plot(traj):
+        gg = f[f["trajectory"] == traj]
+        if gg.empty:
+            return False
+        return (gg["visit_rel"].value_counts() >= 3).any()
+
+    plottable = [t for t in traj_groups if _will_plot(t)]
+    n_active = len(plottable)
+    if n_active <= 1:
+        offsets = {t: 0.0 for t in plottable}
+    else:
+        spread = 0.15                         # total fan width (halved)
+        step   = spread / (n_active - 1)
+        offsets = {t: -spread / 2 + i * step
+                   for i, t in enumerate(plottable)}
+
     # Stem-and-error per ordinal slot per group  ── no smoothed band ──
     for traj in traj_groups:
         g = f[f["trajectory"] == traj]
         if g.empty:
             continue
-        color = TRAJ_COLORS.get(traj, "#444")
-        xs, ys, errs, ns = [], [], [], []
+        color  = TRAJ_COLORS.get(traj, "#444")
+        dx_off = offsets.get(traj, 0.0)
+        slots_int, xs, ys, errs, ns = [], [], [], [], []
         for slot in sorted(g["visit_rel"].unique()):
             sub = g[g["visit_rel"] == slot]
             if len(sub) < 3:
                 continue
             mean = sub[metabolite].mean()
-            sem = sub[metabolite].std() / np.sqrt(len(sub))
-            xs.append(slot)
+            sem  = sub[metabolite].std() / np.sqrt(len(sub))
+            slots_int.append(int(slot))
+            xs.append(slot + dx_off)
             ys.append(mean)
             errs.append(1.96 * sem)
             ns.append(sub["RID"].nunique())
         if not xs:
             continue
+        # Show the 95% CI whiskers only when a single cohort is plotted.
+        # With multiple cohorts the bars stack and become visually noisy;
+        # the per-slot stats table below the chart still carries the
+        # full statistical detail (n, mean, p) so nothing is hidden.
+        show_ci      = (n_active == 1)
+        error_kwarg  = (dict(error_y=dict(type="data", array=errs,
+                                          color=color,
+                                          thickness=1.5, width=8))
+                         if show_ci else {})
+        # Hover line for CI is only meaningful when CI is visible.
+        hover = ("<b>%{customdata[1]}</b><br>"
+                 "visit slot: %{customdata[2]:+d}<br>"
+                 f"{metabolite} mean: %{{y:.2f}}<br>"
+                 + ("± 95% CI: %{customdata[3]:.2f}<br>" if show_ci else "")
+                 + "n patients: %{customdata[0]}<extra></extra>")
+        # customdata carries the integer slot (so hover reads "+0"/"-1"
+        # instead of the dodged float) plus the CI half-width when shown.
+        if show_ci:
+            cd = np.array([[ns[i], traj, slots_int[i], errs[i]]
+                            for i in range(len(xs))], dtype=object)
+        else:
+            cd = np.array([[ns[i], traj, slots_int[i]]
+                            for i in range(len(xs))], dtype=object)
         fig.add_trace(go.Scatter(
             x=xs, y=ys,
             mode="lines+markers",
             line=dict(color=color, width=2.5),
             marker=dict(size=10, color=color,
                         line=dict(color="white", width=1)),
-            error_y=dict(type="data", array=errs, color=color,
-                         thickness=1.5, width=8),
             name=f"{traj}  (n={g['RID'].nunique()})",
-            customdata=np.array([[n, traj] for n in ns]),
-            hovertemplate=(
-                "<b>%{customdata[1]}</b><br>"
-                "visit slot: %{x:+d}<br>"
-                f"{metabolite} mean: %{{y:.2f}}<br>"
-                "± 95% CI: %{error_y.array:.2f}<br>"
-                "n patients: %{customdata[0]}<extra></extra>"
-            ),
+            customdata=cd,
+            hovertemplate=hover,
+            **error_kwarg,
         ))
 
     # Slot dressing
@@ -477,11 +517,22 @@ def pca_figure(traj_groups, sex, color_by, show_arrows, pcs=(0, 1)):
     elif color_by == "sex":
         for sx, c in [("Male", "#3b82f6"), ("Female", "#ec4899")]:
             sub = base[base["sex"] == sx]
+            if sub.empty:
+                continue
             fig.add_trace(go.Scatter(
                 x=sub["PC1"], y=sub["PC2"], mode="markers",
                 marker=dict(size=7, color=c, opacity=0.65,
                             line=dict(width=0.4, color="white")),
                 name=f"{sx}  (n={len(sub)})",
+                # customdata[0] must be RID for the click_to_drill
+                # callback to teleport into the patient view.
+                customdata=np.stack([
+                    sub["RID"], sub["dx"], sub["trajectory"],
+                ], axis=1),
+                hovertemplate=("RID %{customdata[0]}<br>"
+                               "%{customdata[2]}<br>"
+                               "dx=%{customdata[1]}<br>"
+                               "PC1=%{x:.2f}  PC2=%{y:.2f}<extra></extra>"),
             ))
 
     # Per-patient first → last arrows
@@ -675,6 +726,76 @@ def visit_gap_figure():
     return fig
 
 
+def age_at_conversion_figure():
+    """Boxplot of age at conversion for each diagnosis transition.
+
+    For each patient we walk their visits in chronological order and
+    record the age recorded at the visit where the dx changed:
+        NL -> MCI :  first MCI visit that follows an NL visit
+        MCI -> NL :  first NL visit that follows an MCI visit (reverter)
+        MCI -> AD :  first AD visit that follows an MCI visit
+
+    A patient may contribute to more than one transition (e.g. NL->MCI
+    then MCI->AD). Only the first occurrence of each transition per
+    patient is counted. Patients with no observed transition contribute
+    nothing.
+    """
+    rows = []
+    d = DF.dropna(subset=["dx", "age_at_visit"]) \
+          .sort_values(["RID", "visit_idx"])
+    for rid, g in d.groupby("RID"):
+        dxs  = g["dx"].tolist()
+        ages = g["age_at_visit"].tolist()
+        seen = set()
+        for i in range(len(dxs) - 1):
+            a, b = dxs[i], dxs[i + 1]
+            key = (a, b)
+            if a == b or key in seen:
+                continue
+            seen.add(key)
+            if key in {("NL", "MCI"), ("MCI", "NL"), ("MCI", "AD")}:
+                rows.append((f"{a} -> {b}", ages[i + 1]))
+
+    df = pd.DataFrame(rows, columns=["transition", "age"])
+
+    # Standardised colours: end-state diagnosis colour for each box.
+    palette = {
+        "NL -> MCI": DX_COLORS["MCI"],   # grey
+        "MCI -> NL": DX_COLORS["NL"],    # green (reverters)
+        "MCI -> AD": DX_COLORS["AD"],    # red
+    }
+    order = ["NL -> MCI", "MCI -> NL", "MCI -> AD"]
+
+    fig = go.Figure()
+    for tr in order:
+        sub = df[df["transition"] == tr]
+        n   = len(sub)
+        med = sub["age"].median() if n else float("nan")
+        fig.add_trace(go.Box(
+            y=sub["age"],
+            name=f"{tr}<br><span style='font-size:10px;"
+                 f"color:{INK_MUTED}'>n = {n}, median = {med:.1f}</span>",
+            marker=dict(color=palette[tr]),
+            boxmean=True,         # show mean dashed line + sd diamond
+            boxpoints="outliers",
+            line=dict(width=1.5),
+            fillcolor=palette[tr],
+            opacity=0.55,
+            hovertemplate="%{y:.1f} yr<extra></extra>",
+        ))
+
+    fig.update_layout(
+        title=("<b>Age at first diagnosis transition</b>  -  "
+               "one observation per patient per transition"),
+        xaxis_title="Diagnosis transition",
+        yaxis_title="Age at the new-diagnosis visit (years)",
+        template="clinical",
+        height=420,
+        showlegend=False,
+    )
+    return fig
+
+
 def sex_over_years_figure():
     """Stacked area: count of Male / Female participants per calendar year."""
     d = DF.copy()
@@ -693,12 +814,13 @@ def sex_over_years_figure():
     counts["pct_female"] = (counts["Female"] / counts["total"] * 100).round(1)
 
     fig = go.Figure()
+    # Female -> blue, Male -> magenta (swapped from the original mapping).
     fig.add_trace(go.Scatter(
         x=counts["year"], y=counts["Female"],
         name="Female", mode="lines",
         stackgroup="one",
-        line=dict(width=0.5, color="#ec4899"),
-        fillcolor="rgba(236, 72, 153, 0.55)",
+        line=dict(width=0.5, color="#3b82f6"),
+        fillcolor="rgba(59, 130, 246, 0.55)",
         customdata=np.stack([counts["pct_female"], counts["total"]], axis=1),
         hovertemplate=("Year %{x}<br>Female: %{y}  "
                        "(%{customdata[0]:.1f}% of %{customdata[1]})"
@@ -708,8 +830,8 @@ def sex_over_years_figure():
         x=counts["year"], y=counts["Male"],
         name="Male", mode="lines",
         stackgroup="one",
-        line=dict(width=0.5, color="#3b82f6"),
-        fillcolor="rgba(59, 130, 246, 0.55)",
+        line=dict(width=0.5, color="#ec4899"),
+        fillcolor="rgba(236, 72, 153, 0.55)",
         customdata=np.stack([counts["pct_male"], counts["total"]], axis=1),
         hovertemplate=("Year %{x}<br>Male: %{y}  "
                        "(%{customdata[0]:.1f}% of %{customdata[1]})"
@@ -751,17 +873,15 @@ def age_over_years_figure():
             line=dict(color=color, width=2.5),
             marker=dict(size=7, color=color,
                         line=dict(color="white", width=1)),
-            error_y=dict(type="data", array=sub["std"], thickness=1,
-                         width=4, color=color),
-            customdata=np.stack([sub["count"], sub["std"]], axis=1),
+            customdata=np.stack([sub["count"]], axis=1),
             hovertemplate=(f"<b>{dx}</b>  year %{{x}}<br>"
-                            "mean age %{y:.1f}  +/- %{customdata[1]:.1f}<br>"
+                            "mean age %{y:.1f} yr<br>"
                             "n visits = %{customdata[0]}<extra></extra>"),
         ))
     fig.update_layout(
         title="<b>Mean age per diagnosis over calendar years</b>",
         xaxis_title="Calendar year",
-        yaxis_title="Age at visit (years, mean +/- std)",
+        yaxis_title="Mean age (years)",
         template="clinical",
         height=400,
         legend=dict(orientation="h", y=-0.18),
