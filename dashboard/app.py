@@ -118,6 +118,8 @@ SIDEBAR = html.Div(className="sidebar", children=[
             options=[{"label": s, "value": s}
                      for s in ["All", "Male", "Female"]],
             value="All", inline=True,
+            labelStyle={"marginRight": "16px"},   # space between All / Male / Female
+            inputStyle={"marginRight": "4px"},
         ),
     ),
 
@@ -192,7 +194,7 @@ SIDEBAR = html.Div(className="sidebar", children=[
         "Individual patient view",
         html.Label("RID"),
         dcc.Dropdown(id="rid", options=[], value=None, searchable=True,
-                     placeholder="type a RID, or click a point in any view"),
+                     placeholder="Type a RID"),
         sec_id="sec-patient",
     ),
 
@@ -238,39 +240,49 @@ def _make_app() -> Dash:
                # click-to-drill (PCA dot -> patient view) silently never fires.
                suppress_callback_exceptions=True)
 
-    app.layout = html.Div(className="app-shell", children=[
-        SIDEBAR,
-        html.Div(className="main", children=[
-            html.Div(className="header", children=[
-                html.H1("Gut-Microbiome Metabolite Trajectories"),
-                html.Div(className="subtitle", children=[
-                    "Visit-ordinal anchoring. ",
-                    html.B("Timepoint 0"),
-                    " represents the visit where a diagnosis change "
-                    "occurred, serving as the alignment anchor for all "
-                    "patients' clinical histories. Prior to this point, "
-                    "patients held a different diagnosis than they did "
-                    "afterward.",
-                    html.Br(),
-                    "The x-axis is ",
-                    html.B("visit count from diagnosis change"),
-                    ", not calendar months - ADNI's roughly-yearly visit "
-                    "cadence makes calendar windows mostly empty.",
-                ]),
-            ]),
-            dcc.Tabs(id="tabs", value="info", className="dash-tabs",
-                     children=[
-                dcc.Tab(label="A - Cohort information", value="info"),
-                dcc.Tab(label="B - Trajectory",         value="traj"),
-                dcc.Tab(label="C - Forest plot",        value="forest"),
-                dcc.Tab(label="D - PCA state",          value="pca"),
-                dcc.Tab(label="E - Individual patient view",
-                        value="patient"),
-            ]),
-            html.Div(id="tab-content", className="dash-tab-content"),
-        ]),
-        dcc.Download(id="stats-download"),
-    ])
+    app.layout = html.Div(
+        className="app-shell",
+        children=[
+            SIDEBAR,
+            html.Div(
+                className="main",
+                children=[
+                    html.Div(
+                        className="header",
+                        children=[
+                            html.H1("Gut-Microbiome Metabolite Trajectories"),
+                            html.Div(
+                                className="subtitle",
+                                children=[
+                                    "Visit-ordinal anchoring. ",
+                                    html.B("Timepoint 0"),
+                                    " represents the visit where a diagnosis change occurred, serving as the alignment anchor for ",
+                                    "all patients' clinical histories. Prior to this point, patients held a different diagnosis than ",
+                                    html.Br(),
+                                    "they did afterward. The x-axis is visit count from diagnosis change, not calendar months.",
+                                ],
+                            ),
+                        ],
+                    ),
+                    dcc.Tabs(
+                        id="tabs",
+                        value="info",
+                        className="dash-tabs",
+                        children=[
+                            dcc.Tab(label="A - Cohort information", value="info"),
+                            dcc.Tab(label="B - Trajectory", value="traj"),
+                            dcc.Tab(label="C - Forest plot", value="forest"),
+                            dcc.Tab(label="D - PCA state", value="pca"),
+                            dcc.Tab(label="E - Individual patient view", value="patient"),
+                        ],
+                    ),
+                    html.Div(id="tab-content", className="dash-tab-content"),
+                ],
+            ),
+            dcc.Download(id="stats-download"),
+        ],
+    )
+    
 
     # ----- Tab-aware sidebar visibility -----
     @app.callback(
@@ -310,12 +322,6 @@ def _make_app() -> Dash:
             return [
                 graph_card("Effect size (Hedges' g) - converter - baseline",
                            "forest-fig"),
-                html.Div(
-                    "Tip: click a metabolite dot to load it in Tab A and "
-                    "the patient drill-down.",
-                    className="note card",
-                    style={"padding": "12px 16px"},
-                ),
             ]
         if tab == "pca":
             return [
@@ -347,10 +353,10 @@ def _make_app() -> Dash:
                 html.Div(className="kpi-card", children=[
                     html.Div("Inter-visit gap", className="label"),
                     html.Div(f"{k['follow_up_gap_mean']:.1f} +/- "
-                             f"{k['follow_up_gap_std']:.1f} mo",
+                             f"{k['follow_up_gap_std']:.1f} months",
                              className="value"),
                     html.Div("yearly transitions only "
-                             "(sc->bl, bl->m06, m06->m12 excluded)",
+                             "(screening, baseline, month 06 excluded)",
                              className="delta"),
                 ]),
                 html.Div(className="kpi-card", children=[
