@@ -68,7 +68,7 @@ pio.templates.default = "clinical"
 # --------------------------------------------------------------------------- #
 
 ROOT = Path(__file__).resolve().parent.parent
-DATA_PATH = ROOT / "interim" / "mtb_sig_with_trajectory.pkl"
+DATA_PATH = ROOT / "data" / "mtb_sig_with_trajectory.pkl"
 
 # 29 statistically-significant metabolites + 3 ratios
 METABOLITES = [

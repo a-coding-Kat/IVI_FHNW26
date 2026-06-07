@@ -1,4 +1,4 @@
-"""Build interim/mtb_sig_with_trajectory.pkl.
+"""Build data/mtb_sig_with_trajectory.pkl.
 
 Adds to the significant-metabolites table:
 
@@ -39,8 +39,8 @@ import numpy as np
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parent.parent
-SRC = ROOT / "interim" / "mtb_significant.pkl"
-DST = ROOT / "interim" / "mtb_sig_with_trajectory.pkl"
+SRC = ROOT / "data" / "mtb_significant.pkl"
+DST = ROOT / "data" / "mtb_sig_with_trajectory.pkl"
 
 SEX_MAP = {0: "Male", 1: "Female"}
 
