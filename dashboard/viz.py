@@ -661,9 +661,13 @@ def drilldown_figure(rid):
                  + str(sex) + "  ·  " + str(n_v)
                  + " visits  ·  slot 0 = " + end_word)
     fig.update_layout(
-        title=title_txt, template="clinical", height=640,
-        margin=dict(l=50, r=20, t=80, b=40),
-        legend=dict(orientation="h", y=1.05),
+        title=dict(text=title_txt, y=0.98, yanchor="top"),
+        template="clinical", height=660,
+        # Extra top room so the horizontal legend sits clear of the figure
+        # title above it AND the first row of subplot titles below it.
+        margin=dict(l=50, r=20, t=120, b=40),
+        legend=dict(orientation="h", y=1.10, yanchor="bottom",
+                    x=0.5, xanchor="center"),
     )
     return fig
 
