@@ -44,7 +44,7 @@
 
 ### T4 — Drill into an individual patient
 **Asked:** on Tab D click the point farthest from the cluster; it should jump to Tab E — read the RID and describe a rising metabolite.
-**Oral answer:** gave an RID and "HDCA rises toward the last visit," after the facilitator helped. **Outcome:** completed **with assistance**. **Time:** ~55 s.
+**Oral answer:** gave an RID and "HDCA rises toward the last visit," after the facilitator helped. Confusion was about the units of the metabolite, making a good point that reverse Box-Cox option might be useful here. **Outcome:** completed **with assistance**. **Time:** ~55 s.
 **Observed:** clicking the PCA point **did not take them to the patient view** — nothing visibly happened. P01 assumed they had mis-clicked, tried twice more, then the facilitator suggested using the RID box. (This matches the click-to-drill defect later found and fixed in `app.py`.)
 
 ### T5 — Inspect cohort-level context
